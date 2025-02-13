@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR QR Code Scanner</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.2/aframe/build/aframe-ar.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    
+    <!-- AR 视图 -->
+    <a-scene embedded arjs>
+        <!-- 追踪 QR Code -->
+        <a-marker type="barcode" value="100">
+            <!-- 3D 模型 -->
+            <a-entity id="model" 
+                      position="0 100 0" 
+                      scale="1 1 1"
+                      rotation="0 0 0"
+                      gltf-model="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models/2.0/Duck/glTF/Duck.gltf">
+            </a-entity>
+        </a-marker>
+
+        <!-- 摄像机 -->
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        // 让 3D 模型缓慢旋转
+        let model = document.getElementById('model');
+        function rotateModel() {
+            let rotation = model.getAttribute('rotation');
+            rotation.y += 1;  // 旋转速度
+            model.setAttribute('rotation', rotation);
+            requestAnimationFrame(rotateModel);
+        }
+        rotateModel();
+    </script>
+
+</body>
+</html>
