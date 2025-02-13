@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR QR Code Scanner</title>
-  <!-- 使用 A-Frame 0.9.2 以保证与 AR.js 1.7.2 的兼容性 -->
+  <title>AR QR Code 3D Model Overlay</title>
+  <!-- 使用 A-Frame 0.9.2（保证与 AR.js 1.7.2 兼容） -->
   <script src="https://aframe.io/releases/0.9.2/aframe.min.js" crossorigin="anonymous"></script>
   <!-- AR.js -->
   <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.2/aframe/build/aframe-ar.min.js" crossorigin="anonymous"></script>
-  <!-- 使用 unpkg 加载 jsQR -->
+  <!-- jsQR -->
   <script src="https://unpkg.com/jsqr/dist/jsQR.js" crossorigin="anonymous"></script>
   <style>
-    /* 隐藏用于二维码扫描的 video 和 canvas */
+    /* 隐藏用于二维码扫描的 video 与 canvas */
     #qr-video, #qr-canvas {
       display: none;
     }
@@ -23,8 +23,7 @@
     <!-- 摄像机 -->
     <a-entity camera></a-entity>
     <!-- 3D 模型，初始隐藏 -->
-    <a-entity id="model" 
-              position="0 1 -3" 
+    <a-entity id="model"
               scale="0.5 0.5 0.5"
               rotation="0 0 0"
               gltf-model="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models/2.0/Duck/glTF/Duck.gltf"
@@ -32,19 +31,27 @@
     </a-entity>
   </a-scene>
 
-  <!-- 用于二维码扫描的隐藏视频和画布 -->
+  <!-- 隐藏的用于二维码扫描的视频与画布 -->
   <video id="qr-video" playsinline></video>
   <canvas id="qr-canvas"></canvas>
 
   <script>
-    // 获取 video 与 canvas 元素
     const video = document.getElementById('qr-video');
     const canvas = document.getElementById('qr-canvas');
     const canvasContext = canvas.getContext('2d');
 
-    let mode = 0; // 0 表示未触发，1 表示已检测到目标二维码
+    // 用于超时判断：2秒内未检测到二维码则隐藏模型
+    let lastQRTime = 0;
+    const qrTimeout = 2000;
 
-    // 请求摄像头访问（用于二维码扫描）
+    // 获取 AR 场景及其相机（等待加载完成）
+    const sceneEl = document.querySelector('a-scene');
+    let camera;
+    sceneEl.addEventListener('loaded', function() {
+      camera = sceneEl.camera;
+    });
+
+    // 请求摄像头权限用于二维码扫描
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
       .then(function(stream) {
         video.srcObject = stream;
@@ -52,46 +59,61 @@
         requestAnimationFrame(tick);
       })
       .catch(function(err) {
-        console.error("Error accessing camera: ", err);
+        console.error("Error accessing camera:", err);
       });
 
-    // 每帧扫描视频中的图像
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        // 设置 canvas 大小与视频一致
+        // 将 canvas 尺寸设置为视频实际尺寸
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        // 将当前视频帧绘制到 canvas 上
+        // 绘制当前视频帧
         canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-        // 使用 jsQR 解析二维码
+        // 解析二维码
         const code = jsQR(imageData.data, canvas.width, canvas.height);
-        if (code) {
-          console.log("QR code found:", code.data);
-          // 检查内容是否等于 "100"（去除前后空白）
-          if (code.data.trim() === "100" && mode !== 1) {
-            mode = 1;
-            // 显示 3D 模型
-            const modelEntity = document.getElementById('model');
-            modelEntity.setAttribute('visible', 'true');
-            console.log("QR code detected, mode set to 1");
+        const modelEntity = document.getElementById('model');
+        if (code && code.data.trim() === "100") {
+          // 更新上次检测时间
+          lastQRTime = Date.now();
+          // 计算二维码的边界（利用四角坐标求中心）
+          const loc = code.location;
+          const xs = [loc.topLeftCorner.x, loc.topRightCorner.x, loc.bottomLeftCorner.x, loc.bottomRightCorner.x];
+          const ys = [loc.topLeftCorner.y, loc.topRightCorner.y, loc.bottomLeftCorner.y, loc.bottomRightCorner.y];
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          const centerX = (minX + maxX) / 2;
+          const centerY = (minY + maxY) / 2;
+
+          // 将 canvas 坐标转换为归一化设备坐标（NDC），范围[-1,1]
+          const ndcX = (centerX / canvas.width) * 2 - 1;
+          const ndcY = -((centerY / canvas.height) * 2 - 1);
+
+          // 利用 THREE.Raycaster 将 NDC 坐标转换到世界坐标（固定距离，例如 2 个单位）
+          if (camera) {
+            const ndcPoint = new THREE.Vector2(ndcX, ndcY);
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(ndcPoint, camera);
+            const distance = 2;  // 你可以调整这个距离
+            const newPos = raycaster.ray.at(distance, new THREE.Vector3());
+            // 更新 3D 模型的位置，使其覆盖二维码
+            modelEntity.setAttribute('position', `${newPos.x} ${newPos.y} ${newPos.z}`);
+            // 显示模型
+            if (!modelEntity.getAttribute('visible')) {
+              modelEntity.setAttribute('visible', 'true');
+            }
+          }
+        } else {
+          // 超时未检测到二维码则隐藏模型
+          if (Date.now() - lastQRTime > qrTimeout) {
+            if (modelEntity.getAttribute('visible')) {
+              modelEntity.setAttribute('visible', 'false');
+            }
           }
         }
       }
       requestAnimationFrame(tick);
     }
-
-    // 让 3D 模型缓慢旋转
-    const model = document.getElementById('model');
-    function rotateModel() {
-      if (mode === 1) {
-        let rotation = model.getAttribute('rotation');
-        rotation.y += 1;  // 调整旋转速度
-        model.setAttribute('rotation', rotation);
-      }
-      requestAnimationFrame(rotateModel);
-    }
-    rotateModel();
   </script>
 </body>
 </html>
