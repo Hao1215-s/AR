@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AR QR Code Scanner</title>
-  <!-- A-Frame 和 AR.js -->
-  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <!-- 使用 A-Frame 0.9.2 以保证与 AR.js 1.7.2 的兼容性 -->
+  <script src="https://aframe.io/releases/0.9.2/aframe.min.js"></script>
+  <!-- AR.js -->
   <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.2/aframe/build/aframe-ar.min.js"></script>
-  <!-- jsQR 用于扫描普通二维码 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+  <!-- 使用 unpkg 加载 jsQR -->
+  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
   <style>
-    /* 隐藏用于扫描的 video 和 canvas */
+    /* 隐藏用于二维码扫描的 video 和 canvas */
     #qr-video, #qr-canvas {
       display: none;
     }
@@ -31,7 +32,7 @@
     </a-entity>
   </a-scene>
 
-  <!-- 隐藏的用于二维码扫描的视频和画布 -->
+  <!-- 用于二维码扫描的隐藏视频和画布 -->
   <video id="qr-video" playsinline></video>
   <canvas id="qr-canvas"></canvas>
 
@@ -41,7 +42,7 @@
     const canvas = document.getElementById('qr-canvas');
     const canvasContext = canvas.getContext('2d');
 
-    let mode = 0; // 模式变量，0 表示未检测到，1 表示已检测到目标二维码
+    let mode = 0; // 0 表示未触发，1 表示已检测到目标二维码
 
     // 请求摄像头访问（用于二维码扫描）
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
@@ -54,10 +55,10 @@
         console.error("Error accessing camera: ", err);
       });
 
-    // 每帧扫描 video 中的图像
+    // 每帧扫描视频中的图像
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        // 设置 canvas 尺寸与视频一致
+        // 设置 canvas 大小与视频一致
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         // 将当前视频帧绘制到 canvas 上
@@ -66,13 +67,14 @@
         // 使用 jsQR 解析二维码
         const code = jsQR(imageData.data, canvas.width, canvas.height);
         if (code) {
-          // 如果检测到二维码，且内容为 "100"
-          if (code.data === "100" && mode !== 1) {
+          console.log("QR code found:", code.data);
+          // 检查内容是否等于 "100"（去除前后空白）
+          if (code.data.trim() === "100" && mode !== 1) {
             mode = 1;
             // 显示 3D 模型
             const modelEntity = document.getElementById('model');
             modelEntity.setAttribute('visible', 'true');
-            console.log("QR code detected: ", code.data);
+            console.log("QR code detected, mode set to 1");
           }
         }
       }
@@ -84,7 +86,7 @@
     function rotateModel() {
       if (mode === 1) {
         let rotation = model.getAttribute('rotation');
-        rotation.y += 1;  // 旋转速度，可根据需要调整
+        rotation.y += 1;  // 调整旋转速度
         model.setAttribute('rotation', rotation);
       }
       requestAnimationFrame(rotateModel);
